@@ -1,0 +1,102 @@
+{
+  "users": {
+    "566301800": {
+      "chat_id": 566301800,
+      "username": "MOHAMADDLM",
+      "first_name": "MOHAMAD",
+      "coins": 0,
+      "referral_count": 0,
+      "join_date": "2026-05-15",
+      "is_banned": false,
+      "referred_by": null,
+      "total_services": 0,
+      "registered": true
+    },
+    "961365967": {
+      "chat_id": 961365967,
+      "username": "edayildizimm",
+      "first_name": "🅔🅓🅐 🅨🅘🅛🅓🅘🅩",
+      "coins": 0,
+      "referral_count": 0,
+      "join_date": "2026-05-15",
+      "is_banned": false,
+      "referred_by": null,
+      "total_services": 0,
+      "registered": true
+    },
+    "6622580245": {
+      "chat_id": 6622580245,
+      "username": "Mojeao",
+      "first_name": "𝗠𝗼𝗷𝗲",
+      "coins": 0,
+      "referral_count": 0,
+      "join_date": "2026-05-15",
+      "is_banned": false,
+      "referred_by": null,
+      "total_services": 0,
+      "registered": true
+    },
+    "8426046895": {
+      "chat_id": 8426046895,
+      "username": "Abslnf",
+      "first_name": "🥀",
+      "coins": 0,
+      "referral_count": 0,
+      "join_date": "2026-05-15",
+      "is_banned": false,
+      "referred_by": null,
+      "total_services": 0,
+      "registered": true
+    },
+    "5958474241": {
+      "chat_id": 5958474241,
+      "username": "Edam_m",
+      "first_name": "Mhd",
+      "coins": 0,
+      "referral_count": 0,
+      "join_date": "2026-05-15",
+      "is_banned": false,
+      "referred_by": null,
+      "total_services": 0,
+      "registered": true
+    },
+    "5965298679": {
+      "chat_id": 5965298679,
+      "username": "Rezvan_20",
+      "first_name": "Rezva",
+      "coins": 0,
+      "referral_count": 0,
+      "join_date": "2026-05-15",
+      "is_banned": false,
+      "referred_by": null,
+      "total_services": 0,
+      "registered": true
+    }
+  },
+  "settings": {
+    "coin_per_referral": 1,
+    "service_cost": 2,
+    "service_size_gb": 1,
+    "service_duration_hours": 24,
+    "welcome_text": "به ربات کانفیگ رایگان خوش آمدید",
+    "maintenance_mode": false,
+    "admin_ids": [
+      6622580245,
+      8426046895
+    ],
+    "admin_usernames": [
+      "Mojeao",
+      "Abslnf"
+    ]
+  },
+  "configs": [],
+  "required_channels": [
+    {
+      "username": "lnterFreedom",
+      "title": "InterFreedom",
+      "url": "https://t.me/lnterFreedom"
+    }
+  ],
+  "custom_buttons": [],
+  "pending_captchas": {}
+}
