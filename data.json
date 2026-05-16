@@ -98,5 +98,6 @@
     }
   ],
   "custom_buttons": [],
-  "pending_captchas": {}
+  "pending_captchas": {},
+  "user_states": {}
 }
