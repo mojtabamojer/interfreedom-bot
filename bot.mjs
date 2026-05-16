@@ -497,23 +497,33 @@ function setState(chatId, st) {
 // ─── Credit referral helper ───────────────────────────────────────────────────
 async function creditReferral(chatId, db) {
   const u = getUser(db, chatId);
+  console.log(`[creditReferral] chatId=${chatId} pending_referral=${u.pending_referral} referred_by=${u.referred_by}`);
   if (!u.pending_referral || u.referred_by) return;
   const refId = u.pending_referral;
   const refUser = db.users[refId];
-  if (!refUser) { delete u.pending_referral; return; }
+  if (!refUser) {
+    console.log(`[creditReferral] referrer ${refId} not found in DB`);
+    delete u.pending_referral;
+    return;
+  }
+  const earned = db.settings.coin_per_referral || 1;
   const before = refUser.coins;
-  refUser.coins += db.settings.coin_per_referral || 1;
+  refUser.coins += earned;
   refUser.referral_count = (refUser.referral_count || 0) + 1;
   u.referred_by = refId;
   delete u.pending_referral;
+  console.log(`[creditReferral] credited ${earned} coins to ${refId}. new total: ${refUser.coins}`);
+
+  // Notify referrer
   await send(Number(refId),
-    `${em(E.MSG_PARTY)} <b>زیرمجموعه جدید!</b>\n\n` +
-    `${em(E.MSG_PEOPLE)} عضو شد: ${u.username ? '@' + u.username : u.first_name || 'کاربر'}\n\n` +
-    `${em(E.MSG_COIN)} موجودی شما:\n` +
-    `قبل: ${before} امتیاز\n` +
-    `بعد: ${refUser.coins} امتیاز\n\n` +
-    `${em(E.MSG_CHART)} کل زیرمجموعه‌های شما: ${refUser.referral_count}`
-  ).catch(() => {});
+    `${em(E.MSG_PARTY)} <b>زیرمجموعه جدید عضو شد!</b>\n\n` +
+    `${em(E.MSG_PEOPLE)} کاربر: ${u.username ? '@' + u.username : u.first_name || 'کاربر'}\n` +
+    `${em(E.MSG_SUCCESS)} عضویت کانال تایید شد\n\n` +
+    `${em(E.MSG_COIN)} <b>+${earned} امتیاز دریافت کردید!</b>\n` +
+    `موجودی قبل: ${before}\n` +
+    `موجودی الان: ${refUser.coins}\n\n` +
+    `${em(E.MSG_CHART)} کل زیرمجموعه‌ها: ${refUser.referral_count}`
+  ).catch(e => console.error('Notify referrer failed:', e.message));
 }
 
 // ─── /start handler ───────────────────────────────────────────────────────────
@@ -1202,13 +1212,15 @@ async function handleMessage(msg) {
 
   // /start
   if (text.startsWith('/start')) {
-    // React to the /start message with ⚡
+    // React to the /start message with ⚡ (big animation)
     api('setMessageReaction', {
       chat_id: chatId,
       message_id: msg.message_id,
       reaction: [{ type: 'emoji', emoji: '⚡' }],
-      is_big: false,
-    }).catch(() => {});
+      is_big: true,
+    }).then(r => {
+      if (!r.ok) console.error(`Reaction failed (${chatId}):`, r.description);
+    }).catch(e => console.error('Reaction err:', e.message));
     await handleStart(msg, db);
     return;
   }
