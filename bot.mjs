@@ -231,15 +231,24 @@ function mainKb(db) {
 
 function subKb(db) {
   const rows = (db.required_channels || []).map(ch => ([{
-    text: ch.title,
+    text: `⚡ ${ch.title}`,
     url: ch.url,
-    icon_custom_emoji_id: E.CHANNEL_BTN,
   }]));
   rows.push([{
-    text: 'تایید عضویت',
+    text: '✅ تایید عضویت',
     callback_data: 'verify_sub',
-    icon_custom_emoji_id: E.VERIFY,
   }]);
+  return { inline_keyboard: rows };
+}
+
+function channelsAdminKb(db) {
+  const chs = db.required_channels || [];
+  const rows = chs.map(ch => ([
+    { text: `📢 ${ch.title} (@${ch.username})`, callback_data: `ch_info:${ch.username}` },
+    { text: '❌ حذف', callback_data: `adm_del_ch:${ch.username}` },
+  ]));
+  rows.push([{ text: '➕ افزودن کانال', callback_data: 'adm_add_ch' }]);
+  rows.push([{ text: '🔙 برگشت', callback_data: 'adm_back' }]);
   return { inline_keyboard: rows };
 }
 
@@ -485,6 +494,28 @@ function setState(chatId, st) {
   } catch {}
 }
 
+// ─── Credit referral helper ───────────────────────────────────────────────────
+async function creditReferral(chatId, db) {
+  const u = getUser(db, chatId);
+  if (!u.pending_referral || u.referred_by) return;
+  const refId = u.pending_referral;
+  const refUser = db.users[refId];
+  if (!refUser) { delete u.pending_referral; return; }
+  const before = refUser.coins;
+  refUser.coins += db.settings.coin_per_referral || 1;
+  refUser.referral_count = (refUser.referral_count || 0) + 1;
+  u.referred_by = refId;
+  delete u.pending_referral;
+  await send(Number(refId),
+    `${em(E.MSG_PARTY)} <b>زیرمجموعه جدید!</b>\n\n` +
+    `${em(E.MSG_PEOPLE)} عضو شد: ${u.username ? '@' + u.username : u.first_name || 'کاربر'}\n\n` +
+    `${em(E.MSG_COIN)} موجودی شما:\n` +
+    `قبل: ${before} امتیاز\n` +
+    `بعد: ${refUser.coins} امتیاز\n\n` +
+    `${em(E.MSG_CHART)} کل زیرمجموعه‌های شما: ${refUser.referral_count}`
+  ).catch(() => {});
+}
+
 // ─── /start handler ───────────────────────────────────────────────────────────
 async function handleStart(msg, db) {
   const chatId = msg.chat.id;
@@ -562,40 +593,29 @@ async function handleCaptcha(chatId, text, db) {
   }
 
   if (parseInt(text.trim()) === cap.answer) {
-    // Correct!
+    // Correct captcha!
     setState(chatId, null);
     const u = getUser(db, chatId);
     u.registered = true;
 
-    // Credit referrer
-    if (cap.referrerId && cap.referrerId !== String(chatId) && !u.referred_by) {
-      const refUser = db.users[cap.referrerId];
-      if (refUser) {
-        const before = refUser.coins;
-        refUser.coins += db.settings.coin_per_referral || 1;
-        refUser.referral_count = (refUser.referral_count || 0) + 1;
-        u.referred_by = cap.referrerId;
-
-        // Notify referrer
-        await send(Number(cap.referrerId),
-          `${em(E.MSG_PARTY)} <b>زیرمجموعه جدید!</b>\n\n` +
-          `${em(E.MSG_PEOPLE)} به ربات دعوت شد ${u.username ? '@' + u.username : u.first_name || 'کاربر'}\n\n` +
-          `${em(E.MSG_COIN)} موجودی شما:\n` +
-          `قبل: ${before} امتیاز\n` +
-          `بعد: ${refUser.coins} امتیاز\n\n` +
-          `${em(E.MSG_CHART)} تعداد کل زیرمجموعه‌های شما: ${refUser.referral_count}`
-        ).catch(() => {});
-      }
+    // Save pending referral — coins will be given AFTER channel join
+    if (cap.referrerId && cap.referrerId !== String(chatId) && !u.referred_by && !u.pending_referral) {
+      u.pending_referral = cap.referrerId;
     }
 
     delete db.pending_captchas[String(chatId)];
     saveDB(db);
 
-    await send(chatId, `${em(E.MSG_SUCCESS)} تایید شد!`);
+    await send(chatId, `${em(E.MSG_SUCCESS)} <b>تایید شد!</b>\n\nالان برای ادامه باید عضو کانال‌های زیر بشی:`);
 
     const ok = await checkAllSubs(chatId, db);
     if (!ok) await showForceSub(chatId, db);
-    else await showWelcome(chatId, db);
+    else {
+      // Already in all channels — credit referral now
+      await creditReferral(chatId, db);
+      saveDB(db);
+      await showWelcome(chatId, db);
+    }
 
   } else {
     cap.tries = (cap.tries || 0) + 1;
@@ -755,24 +775,22 @@ async function handleAdminState(chatId, text, db, username) {
       await send(chatId, `${em(E.MSG_ERROR)} کاربر پیدا نشد.`);
     }
 
-  } else if (st === 'adm_channels') {
+  } else if (st === 'adm_add_channel') {
     setState(chatId, null);
     db.required_channels = db.required_channels || [];
-    if (text.startsWith('add ')) {
-      const parts = text.slice(4).trim().split(/\s+/);
-      const uname = parts[0].replace('@', '');
-      const title = parts.slice(1).join(' ') || uname;
-      db.required_channels.push({ username: uname, title, url: `https://t.me/${uname}` });
-      saveDB(db);
-      await send(chatId, `${em(E.MSG_SUCCESS)} کانال @${uname} اضافه شد.`);
-    } else if (text.startsWith('del ')) {
-      const uname = text.slice(4).trim().replace('@', '');
-      db.required_channels = db.required_channels.filter(c => c.username !== uname);
-      saveDB(db);
-      await send(chatId, `${em(E.MSG_SUCCESS)} کانال @${uname} حذف شد.`);
-    } else {
-      await send(chatId, `${em(E.MSG_ERROR)} فرمت اشتباه.`);
+    const parts = text.trim().split(/\s+/);
+    const uname = parts[0].replace('@', '');
+    const title = parts.slice(1).join(' ') || uname;
+    if (!uname) { await send(chatId, `${em(E.MSG_ERROR)} فرمت اشتباه. مثال: @MyChannel عنوان`); return true; }
+    if (db.required_channels.find(c => c.username === uname)) {
+      await send(chatId, `${em(E.MSG_ERROR)} کانال @${uname} قبلاً اضافه شده است.`); return true;
     }
+    db.required_channels.push({ username: uname, title, url: `https://t.me/${uname}` });
+    saveDB(db);
+    await send(chatId,
+      `${em(E.MSG_SUCCESS)} <b>کانال @${uname} اضافه شد!</b>\n\n` +
+      `${em(E.MSG_BELL)} مطمئن شو ربات ادمین کانال است.`
+    );
 
   } else if (st === 'adm_coin_cfg') {
     setState(chatId, null);
@@ -878,10 +896,15 @@ async function handleCallback(cb) {
   if (data === 'verify_sub') {
     const ok = await checkAllSubs(chatId, db);
     if (ok) {
-      await answerCb(cbId, `${em(E.MSG_SUCCESS)} عضویت تایید شد!`);
+      await answerCb(cbId, '✅ عضویت تایید شد!');
+      // Delete the force-sub message
+      await api('deleteMessage', { chat_id: chatId, message_id: msgId }).catch(() => {});
+      // Credit pending referral now that they've joined
+      await creditReferral(chatId, db);
+      saveDB(db);
       await showWelcome(chatId, db);
     } else {
-      await answerCb(cbId, 'هنوز در همه کانال‌ها عضو نشده‌اید!', true);
+      await answerCb(cbId, '⚠️ هنوز در همه کانال‌ها عضو نشده‌اید!', true);
     }
     return;
   }
@@ -1006,12 +1029,47 @@ async function handleCallback(cb) {
     await send(chatId, `${em(E.DELETE_USER)} آیدی کاربری که حذف شود:`);
 
   } else if (data === 'adm_channels') {
-    const chs = (db.required_channels || []).map(c => `@${c.username} — ${c.title}`).join('\n');
-    setState(chatId, 'adm_channels');
+    const chs = db.required_channels || [];
+    const txt = chs.length
+      ? chs.map((c, i) => `${i + 1}. 📢 <b>${c.title}</b> — @${c.username}`).join('\n')
+      : '— هیچ کانالی تنظیم نشده';
+    await edit(chatId, msgId,
+      `${em(E.CHANNELS)} <b>کانال‌های اجباری (${chs.length} کانال)</b>\n\n${txt}`,
+      { reply_markup: channelsAdminKb(db) }
+    );
+
+  } else if (data === 'adm_add_ch') {
+    setState(chatId, 'adm_add_channel');
     await send(chatId,
-      `${em(E.CHANNELS)} <b>کانال‌های اجباری:</b>\n${chs || '—'}\n\n` +
-      `برای افزودن:\n<code>add @username عنوان کانال</code>\n` +
-      `برای حذف:\n<code>del @username</code>`
+      `${em(E.CHANNELS)} <b>افزودن کانال اجباری</b>\n\n` +
+      `فرمت:\n<code>@username عنوان کانال</code>\n\n` +
+      `مثال:\n<code>@MyChannel کانال اصلی</code>\n\n` +
+      `مطمئن شو ربات ادمین کانال است وگرنه چک عضویت کار نمی‌کند.`
+    );
+
+  } else if (data?.startsWith('adm_del_ch:')) {
+    const uname = data.split(':')[1];
+    db.required_channels = (db.required_channels || []).filter(c => c.username !== uname);
+    saveDB(db);
+    const chs = db.required_channels;
+    const txt = chs.length
+      ? chs.map((c, i) => `${i + 1}. 📢 <b>${c.title}</b> — @${c.username}`).join('\n')
+      : '— هیچ کانالی تنظیم نشده';
+    await edit(chatId, msgId,
+      `${em(E.MSG_SUCCESS)} کانال @${uname} حذف شد.\n\n` +
+      `${em(E.CHANNELS)} <b>کانال‌های اجباری (${chs.length} کانال)</b>\n\n${txt}`,
+      { reply_markup: channelsAdminKb(db) }
+    );
+
+  } else if (data?.startsWith('ch_info:')) {
+    const uname = data.split(':')[1];
+    const ch = (db.required_channels || []).find(c => c.username === uname);
+    if (ch) await answerCb(cbId, `📢 ${ch.title}\n@${ch.username}\n${ch.url}`, true);
+
+  } else if (data === 'adm_back') {
+    await edit(chatId, msgId,
+      `${em(E.BOT_STATUS)} <b>پنل مدیریت ادمین</b>`,
+      { reply_markup: adminKb() }
     );
 
   } else if (data === 'adm_coin_cfg') {
@@ -1144,6 +1202,13 @@ async function handleMessage(msg) {
 
   // /start
   if (text.startsWith('/start')) {
+    // React to the /start message with ⚡
+    api('setMessageReaction', {
+      chat_id: chatId,
+      message_id: msg.message_id,
+      reaction: [{ type: 'emoji', emoji: '⚡' }],
+      is_big: false,
+    }).catch(() => {});
     await handleStart(msg, db);
     return;
   }
