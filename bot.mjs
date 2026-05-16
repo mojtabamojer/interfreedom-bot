@@ -107,6 +107,7 @@ function defaultDB() {
     ],
     custom_buttons: [],
     pending_captchas: {},
+    user_states: {},
   };
 }
 
@@ -451,15 +452,37 @@ async function showGuide(chatId, db) {
   await send(chatId, text, { reply_markup: mainKb(db) });
 }
 
-// ─── State (in-memory + persisted) ───────────────────────────────────────────
+// ─── State (persisted to DB — survives restarts and multi-instance) ──────────
 const userState = new Map();
+
+function loadStateFromDB() {
+  try {
+    const db = loadDB();
+    for (const [k, v] of Object.entries(db.user_states || {})) {
+      if (v) userState.set(k, v);
+    }
+    if (userState.size) console.log(`Restored ${userState.size} user states from DB`);
+  } catch {}
+}
 
 function getState(chatId) {
   return userState.get(String(chatId)) || null;
 }
+
 function setState(chatId, st) {
-  if (st === null) userState.delete(String(chatId));
-  else userState.set(String(chatId), st);
+  const key = String(chatId);
+  if (st === null) {
+    userState.delete(key);
+  } else {
+    userState.set(key, st);
+  }
+  try {
+    const db = loadDB();
+    db.user_states = db.user_states || {};
+    if (st === null) delete db.user_states[key];
+    else db.user_states[key] = st;
+    saveDB(db);
+  } catch {}
 }
 
 // ─── /start handler ───────────────────────────────────────────────────────────
@@ -1205,6 +1228,7 @@ async function handleMessage(msg) {
 let offset = 0;
 
 async function poll() {
+  loadStateFromDB();
   console.log(`[${new Date().toISOString()}] ربات شروع به کار کرد...`);
   while (true) {
     try {
